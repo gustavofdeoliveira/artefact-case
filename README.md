@@ -74,7 +74,7 @@ The scope was limited on purpose. Below is what was left out and how it would be
 | **Rate limiting / abuse protection** | Not implemented. | Rate limiting per IP/user (gateway or middleware) plus payload size limits. |
 | **CORS / HTTPS** | CORS allows a single origin (the local frontend); plain HTTP in development. | HTTPS terminated at a reverse proxy and CORS restricted to official domains. |
 | **Observability** | Console logs only. | Structured logs, tracing (OpenTelemetry), metrics and alerts. |
-| **Automated tests** | No versioned test suite; the app was validated with a manual end-to-end script (see [Validation](#validation)). | Unit tests for the tRPC procedures (`createCaller`), component tests and e2e (Playwright) in CI. |
+| **Automated tests** | No versioned test suite; the app was validated manually end to end. | Unit tests for the tRPC procedures (`createCaller`), component tests and e2e (Playwright) in CI. |
 | **CI/CD and deploy** | Not configured. | Pipeline with lint, typecheck, tests and image build, plus automated deploy. |
 | **Frontend in Docker** | Not containerized on purpose; it runs locally with `npm run dev`. | Image built with Next.js `output: "standalone"`, if needed. |
 | **Accessibility / i18n** | Basic: semantic HTML, `aria-*` on fields and notices; English-only UI. | Accessibility audit and internationalization. |
@@ -160,23 +160,3 @@ Open `http://localhost:3000`.
 | `task.create` | mutation | `{ titulo, descricao? }` | `BAD_REQUEST` (empty/too long title) |
 | `task.update` | mutation | `{ id, titulo, descricao? }` | `NOT_FOUND`, `BAD_REQUEST` |
 | `task.delete` | mutation | `{ id }` | `NOT_FOUND`, `BAD_REQUEST` |
-
----
-
-## Validation
-
-The application was checked end to end in a headless Chrome (Playwright script, not versioned) against the running backend and frontend. All checks passed:
-
-| Requirement | Scenario |
-|-------------|----------|
-| FR07 | Raw HTML (no JavaScript) already contains the first 10 tasks. |
-| FR02, FR12 | Scrolling loads pages 2 and 3 (25 tasks) and shows the end-of-list message. |
-| FR04, FR08 | Deleting from the list removes the task and shows a success notice. |
-| FR08, FR11 | Deleting a task already removed on the server shows the backend's `NOT_FOUND` message. |
-| FR10 | Empty or whitespace-only title blocks submission with no request sent. |
-| FR11 | While saving, the button shows "Saving..." and is disabled. |
-| FR01 | Creating redirects to the list with a success notice; the new task is first. |
-| FR03, FR09 | The edit form is pre-filled; saving shows the new title and a success notice. |
-| FR06 | Saving a task deleted meanwhile shows `NOT_FOUND` in the form; a missing or malformed id shows the not-found page. |
-| FR05 | The backend rejects an empty title with `BAD_REQUEST` regardless of the frontend. |
-| — | No console or hydration errors. |
