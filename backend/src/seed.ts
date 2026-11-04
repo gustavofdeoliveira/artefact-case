@@ -1,34 +1,34 @@
-import { tarefaStore } from "./store";
+import { taskStore } from "./store";
 
 /**
- * Popula o store com tarefas fictícias para que o infinite scroll seja
- * visível logo ao abrir a aplicação. Pode ser desligado com SEED=false.
+ * Fills the store with fictitious tasks so infinite scroll is visible as soon
+ * as the app opens. Disable it with SEED=false.
  */
-const exemplos = [
-  "Revisar pull request do módulo de relatórios",
-  "Atualizar dependências do projeto",
-  "Escrever testes para o fluxo de cadastro",
-  "Preparar apresentação da sprint",
-  "Corrigir alinhamento do cabeçalho no mobile",
-  "Documentar endpoints da API",
-  "Configurar pipeline de CI",
-  "Responder feedback do time de design",
-  "Planejar migração para o novo servidor",
-  "Organizar backlog da próxima sprint",
-  "Investigar lentidão na tela de busca",
-  "Criar protótipo da tela de configurações",
+const samples = [
+  "Review pull request for the reports module",
+  "Update project dependencies",
+  "Write tests for the sign-up flow",
+  "Prepare the sprint demo",
+  "Fix header alignment on mobile",
+  "Document the API endpoints",
+  "Set up the CI pipeline",
+  "Reply to the design team's feedback",
+  "Plan the migration to the new server",
+  "Groom the next sprint's backlog",
+  "Investigate slowness on the search page",
+  "Prototype the settings screen",
 ];
 
-export function seed(quantidade = 25) {
-  const agora = Date.now();
-  for (let i = 0; i < quantidade; i++) {
-    tarefaStore.criar(
+export function seed(count = 25) {
+  const now = Date.now();
+  for (let i = 0; i < count; i++) {
+    taskStore.create(
       {
-        titulo: `${exemplos[i % exemplos.length]} #${i + 1}`,
-        descricao: i % 3 === 0 ? undefined : "Tarefa de exemplo gerada automaticamente.",
+        titulo: `${samples[i % samples.length]} #${i + 1}`,
+        descricao: i % 3 === 0 ? undefined : "Sample task generated automatically.",
       },
-      // Datas espaçadas de 1 minuto para uma ordenação previsível.
-      agora - (quantidade - i) * 60_000,
+      // Dates one minute apart for a predictable order.
+      now - (count - i) * 60_000,
     );
   }
 }

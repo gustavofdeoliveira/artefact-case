@@ -1,69 +1,70 @@
 import { randomUUID } from "node:crypto";
-import type {
-  AtualizarTarefaInput,
-  CriarTarefaInput,
-  ListarTarefasInput,
-  Tarefa,
-} from "./tarefa";
+import type { CreateTaskInput, ListTasksInput, Task, UpdateTaskInput } from "./task";
 
 /**
- * Repositório em memória. A camada de rotas só conhece esta interface,
- * então trocar por um banco real (Postgres/Prisma) não afeta o router.
- * Os dados vivem enquanto o processo estiver de pé, por definição do case.
+ * In-memory repository. The router only knows this object's interface, so
+ * swapping it for a real database (e.g. Postgres + Prisma) would not touch the
+ * tRPC layer. Data lives as long as the process does, as the case allows.
  */
-const tarefas = new Map<string, Tarefa>();
+const tasks = new Map<string, Task>();
+
+type SortKey = Pick<Task, "dataCriacao" | "id">;
 
 /**
- * Ordenação estável: mais recentes primeiro e `id` como desempate, porque
- * duas tarefas podem ser criadas no mesmo milissegundo.
+ * Stable ordering: newest first, with `id` as tie-breaker because two tasks
+ * can be created in the same millisecond. A total order is what makes the
+ * cursor reliable.
  */
-type ChaveOrdenacao = Pick<Tarefa, "dataCriacao" | "id">;
-
-function compararTarefas(a: ChaveOrdenacao, b: ChaveOrdenacao): number {
+function compareTasks(a: SortKey, b: SortKey): number {
   if (a.dataCriacao !== b.dataCriacao) return b.dataCriacao - a.dataCriacao;
   return b.id.localeCompare(a.id);
 }
 
-export const tarefaStore = {
-  listar({ limit, cursor }: ListarTarefasInput) {
-    const ordenadas = [...tarefas.values()].sort(compararTarefas);
+export const taskStore = {
+  /**
+   * Returns one page of tasks plus the cursor for the next one (`null` when
+   * there is nothing left). Sorting the whole map on every call is O(n log n),
+   * which is fine for an in-memory demo; a database would use an index.
+   */
+  list({ limit, cursor }: ListTasksInput) {
+    const sorted = [...tasks.values()].sort(compareTasks);
 
-    // Mantém apenas o que vem *depois* do cursor na ordenação, mesmo que a
-    // tarefa do cursor já tenha sido excluída.
-    const restantes = cursor
-      ? ordenadas.filter((t) => compararTarefas(t, cursor) > 0)
-      : ordenadas;
+    // Keep only what comes *after* the cursor in the ordering. This works even
+    // if the cursor's task has been deleted in the meantime.
+    const remaining = cursor ? sorted.filter((task) => compareTasks(task, cursor) > 0) : sorted;
 
-    const itens = restantes.slice(0, limit);
-    const ultimo = itens[itens.length - 1];
-    const temMais = restantes.length > limit;
+    const items = remaining.slice(0, limit);
+    const last = items[items.length - 1];
+    const hasMore = remaining.length > limit;
 
     return {
-      items: itens,
-      nextCursor: temMais && ultimo ? { dataCriacao: ultimo.dataCriacao, id: ultimo.id } : null,
+      items,
+      nextCursor: hasMore && last ? { dataCriacao: last.dataCriacao, id: last.id } : null,
     };
   },
 
-  obter(id: string): Tarefa | undefined {
-    return tarefas.get(id);
+  get(id: string): Task | undefined {
+    return tasks.get(id);
   },
 
-  criar({ titulo, descricao }: CriarTarefaInput, dataCriacao = Date.now()): Tarefa {
-    const tarefa: Tarefa = { id: randomUUID(), titulo, descricao, dataCriacao };
-    tarefas.set(tarefa.id, tarefa);
-    return tarefa;
+  /** `id` and `dataCriacao` are always generated server-side. */
+  create({ titulo, descricao }: CreateTaskInput, dataCriacao = Date.now()): Task {
+    const task: Task = { id: randomUUID(), titulo, descricao, dataCriacao };
+    tasks.set(task.id, task);
+    return task;
   },
 
-  /** Retorna `undefined` se a tarefa não existir; o router traduz em NOT_FOUND. */
-  atualizar({ id, titulo, descricao }: AtualizarTarefaInput): Tarefa | undefined {
-    const atual = tarefas.get(id);
-    if (!atual) return undefined;
-    const atualizada: Tarefa = { ...atual, titulo, descricao };
-    tarefas.set(id, atualizada);
-    return atualizada;
+  /** Returns `undefined` when the task does not exist; the router maps it to NOT_FOUND. */
+  update({ id, titulo, descricao }: UpdateTaskInput): Task | undefined {
+    const current = tasks.get(id);
+    if (!current) return undefined;
+    const updated: Task = { ...current, titulo, descricao };
+    tasks.set(id, updated);
+    return updated;
   },
 
-  deletar(id: string): boolean {
-    return tarefas.delete(id);
+  /** Returns whether a task was actually removed. */
+  delete(id: string): boolean {
+    return tasks.delete(id);
   },
 };
