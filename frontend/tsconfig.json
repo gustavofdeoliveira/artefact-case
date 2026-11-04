@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./src/*"],
+      // The `AppRouter` type is imported from ../backend/src. These mappings
+      // make the backend's imports (@trpc/server, zod) resolve to the
+      // frontend's packages, so no `npm install` is needed inside backend/
+      // (which runs in Docker).
+      "@trpc/server": ["./node_modules/@trpc/server"],
+      "@trpc/server/*": ["./node_modules/@trpc/server/*"],
+      "zod": ["./node_modules/zod"],
+      "zod/*": ["./node_modules/zod/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}

@@ -1,0 +1,96 @@
+/* Deliberately simple layout: the case does not ask for an elaborate design. */
+:root {
+  --bg: #f6f7f9;
+  --surface: #fff;
+  --text: #1d2329;
+  --muted: #5f6b76;
+  --border: #dde1e6;
+  --primary: #2457c5;
+  --danger: #c22b2b;
+  --success: #1f7a3d;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: var(--primary); }
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.brand { font-weight: 700; font-size: 1.15rem; text-decoration: none; color: var(--text); }
+
+.content { max-width: 720px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+
+.button {
+  display: inline-block;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  background: var(--primary);
+  color: #fff;
+  font: inherit;
+  font-size: 0.9rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.button:disabled { opacity: 0.6; cursor: not-allowed; }
+.button.secondary { background: transparent; color: var(--primary); }
+.button.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+
+.list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.6rem; }
+.task {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 0.9rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.task.deleting { opacity: 0.5; }
+.task h2 { font-size: 1rem; margin: 0 0 0.25rem; overflow-wrap: anywhere; }
+.task p { margin: 0 0 0.35rem; color: var(--muted); overflow-wrap: anywhere; }
+.task time { font-size: 0.8rem; color: var(--muted); }
+.actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+
+.notice {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  border: 1px solid;
+}
+.notice.success { color: var(--success); background: #e9f6ee; border-color: #b9e0c6; }
+.notice.error { color: var(--danger); background: #fbecec; border-color: #f0c2c2; }
+.notice-close { border: 0; background: none; color: inherit; cursor: pointer; }
+
+.status { text-align: center; color: var(--muted); padding: 1rem; }
+
+.form { display: grid; gap: 1rem; background: var(--surface); padding: 1.25rem; border: 1px solid var(--border); border-radius: 8px; }
+.field { display: grid; gap: 0.35rem; }
+.field label { font-weight: 600; font-size: 0.9rem; }
+.field input, .field textarea {
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.field textarea { min-height: 110px; resize: vertical; }
+.field [aria-invalid="true"] { border-color: var(--danger); }
+.field-error { color: var(--danger); font-size: 0.85rem; }
+
+@media (max-width: 480px) {
+  .task { flex-direction: column; }
+}
