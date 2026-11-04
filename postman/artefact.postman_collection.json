@@ -1,0 +1,1268 @@
+{
+  "info": {
+    "name": "artefact – tRPC task API",
+    "description": "Black-box tests for the tRPC backend (task.list/byId/create/update/delete).\n\ntRPC over HTTP:\n- query → `GET {{baseUrl}}/<procedure>?input=<JSON>`\n- mutation → `POST {{baseUrl}}/<procedure>` with the JSON input as body\n- success → `{ result: { data } }`; error → `{ error: { message, code, data: { code, httpStatus, zodError } } }`\n\nRun the folders in order (the CRUD folder chains variables). CLI: `npx newman run postman/artefact.postman_collection.json -e postman/local.postman_environment.json`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1 · CRUD happy path",
+      "item": [
+        {
+          "name": "B01 · List first page",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json().result.data;",
+                  "pm.test(\"at most 10 items\", () => pm.expect(res.items.length).to.be.at.most(10));",
+                  "pm.test(\"every item has the case fields\", () => res.items.forEach(t => {",
+                  "  pm.expect(t.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/); pm.expect(t.titulo).to.be.a(\"string\").and.not.empty; pm.expect(t.dataCriacao).to.be.a(\"number\");",
+                  "}));",
+                  "pm.test(\"newest first\", () => { for (let i = 1; i < res.items.length; i++) pm.expect(res.items[i-1].dataCriacao).to.be.at.least(res.items[i].dataCriacao); });",
+                  "pm.collectionVariables.set(\"nextCursor\", JSON.stringify(res.nextCursor));",
+                  "pm.collectionVariables.set(\"firstPageIds\", JSON.stringify(res.items.map(t => t.id)));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/task.list?input={\"limit\":10}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.list"
+              ],
+              "query": [
+                {
+                  "key": "input",
+                  "value": "{\"limit\":10}"
+                }
+              ]
+            },
+            "description": "FR02 – first page, newest first. Stores `nextCursor` for B02."
+          }
+        },
+        {
+          "name": "B02 · List next page (cursor)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json().result.data;",
+                  "const cursor = JSON.parse(pm.collectionVariables.get(\"nextCursor\"));",
+                  "const seen = JSON.parse(pm.collectionVariables.get(\"firstPageIds\"));",
+                  "pm.test(\"no item repeated from page 1\", () => res.items.forEach(t => pm.expect(seen).to.not.include(t.id)));",
+                  "pm.test(\"all items older than cursor\", () => res.items.forEach(t => pm.expect(t.dataCriacao).to.be.at.most(cursor.dataCriacao)));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/task.list?input={\"limit\":10,\"cursor\":{{nextCursor}}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.list"
+              ],
+              "query": [
+                {
+                  "key": "input",
+                  "value": "{\"limit\":10,\"cursor\":{{nextCursor}}}"
+                }
+              ]
+            },
+            "description": "FR02/FR12 – keyset pagination. Requires at least 11 tasks (seed creates 25)."
+          }
+        },
+        {
+          "name": "B03 · Create task (title + description)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json().result.data;",
+                  "pm.test(\"server generates a UUID id\", () => pm.expect(res.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/));",
+                  "pm.test(\"server generates dataCriacao\", () => pm.expect(Math.abs(Date.now() - res.dataCriacao)).to.be.below(60000));",
+                  "pm.test(\"title is trimmed\", () => pm.expect(res.titulo).to.match(/^Postman task \\d+$/));",
+                  "pm.test(\"description kept\", () => pm.expect(res.descricao).to.eql(\"Created by the Postman collection\"));",
+                  "pm.collectionVariables.set(\"taskId\", res.id);",
+                  "pm.collectionVariables.set(\"taskCreatedAt\", res.dataCriacao);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"titulo\":\"  Postman task {{$timestamp}}  \",\"descricao\":\"Created by the Postman collection\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.create"
+              ]
+            },
+            "description": "FR01 – stores `taskId` for the following requests."
+          }
+        },
+        {
+          "name": "B04 · Create task (title only, blank description)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json().result.data;",
+                  "pm.test(\"blank description is normalized to absent\", () => pm.expect(res).to.not.have.property(\"descricao\"));",
+                  "pm.collectionVariables.set(\"taskId2\", res.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"titulo\":\"Postman task without description\",\"descricao\":\"   \"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.create"
+              ]
+            },
+            "description": "FR01 – `descricao` is optional."
+          }
+        },
+        {
+          "name": "B05 · Newest task is listed first",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json().result.data;",
+                  "pm.test(\"B04 task is first\", () => pm.expect(res.items[0].id).to.eql(pm.collectionVariables.get(\"taskId2\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/task.list?input={\"limit\":2}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.list"
+              ],
+              "query": [
+                {
+                  "key": "input",
+                  "value": "{\"limit\":2}"
+                }
+              ]
+            },
+            "description": "FR02 – ordering."
+          }
+        },
+        {
+          "name": "B06 · Get task by id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json().result.data;",
+                  "pm.test(\"returns the created task\", () => pm.expect(res.id).to.eql(pm.collectionVariables.get(\"taskId\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/task.byId?input={\"id\":\"{{taskId}}\"}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.byId"
+              ],
+              "query": [
+                {
+                  "key": "input",
+                  "value": "{\"id\":\"{{taskId}}\"}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "B07 · Update task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json().result.data;",
+                  "pm.test(\"title updated\", () => pm.expect(res.titulo).to.eql(\"Postman task (edited)\"));",
+                  "pm.test(\"description updated\", () => pm.expect(res.descricao).to.eql(\"Edited description\"));",
+                  "pm.test(\"id and dataCriacao unchanged\", () => { pm.expect(res.id).to.eql(pm.collectionVariables.get(\"taskId\")); pm.expect(String(res.dataCriacao)).to.eql(String(pm.collectionVariables.get(\"taskCreatedAt\"))); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\":\"{{taskId}}\",\"titulo\":\"Postman task (edited)\",\"descricao\":\"Edited description\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.update"
+              ]
+            },
+            "description": "FR03 – PUT semantics."
+          }
+        },
+        {
+          "name": "B08 · Update clears description when omitted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json().result.data;",
+                  "pm.test(\"description removed\", () => pm.expect(res).to.not.have.property(\"descricao\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\":\"{{taskId}}\",\"titulo\":\"Postman task (edited)\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.update"
+              ]
+            },
+            "description": "FR03 – omitted field means cleared (PUT)."
+          }
+        },
+        {
+          "name": "B09 · Delete task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json().result.data;",
+                  "pm.test(\"returns the deleted id\", () => pm.expect(res).to.eql({ id: pm.collectionVariables.get(\"taskId\") }));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\":\"{{taskId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.delete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.delete"
+              ]
+            },
+            "description": "FR04"
+          }
+        },
+        {
+          "name": "B10 · Deleted task is gone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code NOT_FOUND\", () => pm.expect(body.error.data.code).to.eql(\"NOT_FOUND\"));",
+                  "pm.test(\"meaningful message\", () => pm.expect(body.error.message).to.include(\"not found\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/task.byId?input={\"id\":\"{{taskId}}\"}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.byId"
+              ],
+              "query": [
+                {
+                  "key": "input",
+                  "value": "{\"id\":\"{{taskId}}\"}"
+                }
+              ]
+            },
+            "description": "FR04/FR06"
+          }
+        },
+        {
+          "name": "B11 · Cleanup second task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json().result.data;"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\":\"{{taskId2}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.delete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.delete"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 · Validation & errors",
+      "item": [
+        {
+          "name": "B12 · Create without title",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code BAD_REQUEST\", () => pm.expect(body.error.data.code).to.eql(\"BAD_REQUEST\"));",
+                  "pm.test(\"meaningful message\", () => pm.expect(body.error.message).to.include(\"Title is required.\"));",
+                  "pm.test(\"field-level detail in zodError\", () => pm.expect(body.error.data.zodError.titulo).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"descricao\":\"no title\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.create"
+              ]
+            },
+            "description": "FR05"
+          }
+        },
+        {
+          "name": "B13 · Create with empty title",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code BAD_REQUEST\", () => pm.expect(body.error.data.code).to.eql(\"BAD_REQUEST\"));",
+                  "pm.test(\"meaningful message\", () => pm.expect(body.error.message).to.include(\"Title is required.\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"titulo\":\"\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.create"
+              ]
+            },
+            "description": "FR05"
+          }
+        },
+        {
+          "name": "B14 · Create with whitespace-only title",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code BAD_REQUEST\", () => pm.expect(body.error.data.code).to.eql(\"BAD_REQUEST\"));",
+                  "pm.test(\"meaningful message\", () => pm.expect(body.error.message).to.include(\"Title is required.\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"titulo\":\"    \"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.create"
+              ]
+            },
+            "description": "FR05"
+          }
+        },
+        {
+          "name": "B15 · Create with title > 120 chars",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"longTitle\", \"a\".repeat(121));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code BAD_REQUEST\", () => pm.expect(body.error.data.code).to.eql(\"BAD_REQUEST\"));",
+                  "pm.test(\"meaningful message\", () => pm.expect(body.error.message).to.include(\"at most 120\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"titulo\":\"{{longTitle}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.create"
+              ]
+            },
+            "description": "FR05 – length limit."
+          }
+        },
+        {
+          "name": "B16 · Create with description > 1000 chars",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"longDescription\", \"a\".repeat(1001));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code BAD_REQUEST\", () => pm.expect(body.error.data.code).to.eql(\"BAD_REQUEST\"));",
+                  "pm.test(\"meaningful message\", () => pm.expect(body.error.message).to.include(\"at most 1000\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"titulo\":\"ok\",\"descricao\":\"{{longDescription}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.create"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B17 · Create with non-string title",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code BAD_REQUEST\", () => pm.expect(body.error.data.code).to.eql(\"BAD_REQUEST\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"titulo\":123}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.create"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B18 · Update non-existent task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code NOT_FOUND\", () => pm.expect(body.error.data.code).to.eql(\"NOT_FOUND\"));",
+                  "pm.test(\"meaningful message\", () => pm.expect(body.error.message).to.include(\"Task 00000000-0000-4000-8000-000000000000 not found\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\":\"00000000-0000-4000-8000-000000000000\",\"titulo\":\"x\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.update"
+              ]
+            },
+            "description": "FR06 – example given by the case."
+          }
+        },
+        {
+          "name": "B19 · Update with empty title",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code BAD_REQUEST\", () => pm.expect(body.error.data.code).to.eql(\"BAD_REQUEST\"));",
+                  "pm.test(\"meaningful message\", () => pm.expect(body.error.message).to.include(\"Title is required.\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\":\"00000000-0000-4000-8000-000000000000\",\"titulo\":\"\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.update"
+              ]
+            },
+            "description": "Validation runs before lookup."
+          }
+        },
+        {
+          "name": "B20 · Delete non-existent task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code NOT_FOUND\", () => pm.expect(body.error.data.code).to.eql(\"NOT_FOUND\"));",
+                  "pm.test(\"meaningful message\", () => pm.expect(body.error.message).to.include(\"not found\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\":\"00000000-0000-4000-8000-000000000000\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.delete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.delete"
+              ]
+            },
+            "description": "FR06"
+          }
+        },
+        {
+          "name": "B21 · Get non-existent task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code NOT_FOUND\", () => pm.expect(body.error.data.code).to.eql(\"NOT_FOUND\"));",
+                  "pm.test(\"meaningful message\", () => pm.expect(body.error.message).to.include(\"not found\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/task.byId?input={\"id\":\"00000000-0000-4000-8000-000000000000\"}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.byId"
+              ],
+              "query": [
+                {
+                  "key": "input",
+                  "value": "{\"id\":\"00000000-0000-4000-8000-000000000000\"}"
+                }
+              ]
+            },
+            "description": "FR06"
+          }
+        },
+        {
+          "name": "B22 · Get with malformed id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code BAD_REQUEST\", () => pm.expect(body.error.data.code).to.eql(\"BAD_REQUEST\"));",
+                  "pm.test(\"meaningful message\", () => pm.expect(body.error.message).to.include(\"Invalid task ID.\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/task.byId?input={\"id\":\"abc\"}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.byId"
+              ],
+              "query": [
+                {
+                  "key": "input",
+                  "value": "{\"id\":\"abc\"}"
+                }
+              ]
+            },
+            "description": "FR06"
+          }
+        },
+        {
+          "name": "B23 · List with limit 0",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code BAD_REQUEST\", () => pm.expect(body.error.data.code).to.eql(\"BAD_REQUEST\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/task.list?input={\"limit\":0}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.list"
+              ],
+              "query": [
+                {
+                  "key": "input",
+                  "value": "{\"limit\":0}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "B24 · List with limit 51",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code BAD_REQUEST\", () => pm.expect(body.error.data.code).to.eql(\"BAD_REQUEST\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/task.list?input={\"limit\":51}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.list"
+              ],
+              "query": [
+                {
+                  "key": "input",
+                  "value": "{\"limit\":51}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "B25 · Malformed JSON body",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"4xx, no crash\", () => pm.expect(pm.response.code).to.be.within(400, 499));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"titulo\":",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/task.create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.create"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 · Protocol, batching & CORS",
+      "item": [
+        {
+          "name": "B26 · GET on a mutation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 405\", () => pm.response.to.have.status(405));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code METHOD_NOT_SUPPORTED\", () => pm.expect(body.error.data.code).to.eql(\"METHOD_NOT_SUPPORTED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/task.create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.create"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B27 · Unknown procedure",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"tRPC error code NOT_FOUND\", () => pm.expect(body.error.data.code).to.eql(\"NOT_FOUND\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/task.nope",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.nope"
+              ]
+            }
+          }
+        },
+        {
+          "name": "B28 · Batched request (as the frontend sends)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 207 or 200 (mixed results)\", () => pm.expect([200, 207]).to.include(pm.response.code));",
+                  "const [list, byId] = pm.response.json();",
+                  "pm.test(\"first call ok\", () => pm.expect(list.result.data.items).to.be.an(\"array\"));",
+                  "pm.test(\"second call fails independently\", () => pm.expect(byId.error.data.code).to.eql(\"NOT_FOUND\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/task.list,task.byId?batch=1&input={\"0\":{\"limit\":1},\"1\":{\"id\":\"00000000-0000-4000-8000-000000000000\"}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.list,task.byId"
+              ],
+              "query": [
+                {
+                  "key": "batch",
+                  "value": "1"
+                },
+                {
+                  "key": "input",
+                  "value": "{\"0\":{\"limit\":1},\"1\":{\"id\":\"00000000-0000-4000-8000-000000000000\"}}"
+                }
+              ]
+            },
+            "description": "httpBatchLink format: `?batch=1&input={\"0\":...,\"1\":...}`. One failing call does not fail the batch."
+          }
+        },
+        {
+          "name": "B29 · CORS allows the frontend origin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"preflight 204\", () => pm.response.to.have.status(204));",
+                  "pm.test(\"allowed origin is the configured frontend\", () => pm.expect(pm.response.headers.get(\"Access-Control-Allow-Origin\")).to.eql(pm.variables.get(\"frontendOrigin\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "OPTIONS",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:3000"
+              },
+              {
+                "key": "Access-Control-Request-Method",
+                "value": "POST"
+              },
+              {
+                "key": "Access-Control-Request-Headers",
+                "value": "content-type"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/task.create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "task.create"
+              ]
+            },
+            "description": "NFR06 – CORS_ORIGIN. Expected value follows the `frontendOrigin` variable."
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000"
+    },
+    {
+      "key": "frontendOrigin",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "taskId",
+      "value": ""
+    },
+    {
+      "key": "taskId2",
+      "value": ""
+    },
+    {
+      "key": "taskCreatedAt",
+      "value": ""
+    },
+    {
+      "key": "nextCursor",
+      "value": "null"
+    },
+    {
+      "key": "firstPageIds",
+      "value": "[]"
+    },
+    {
+      "key": "longTitle",
+      "value": ""
+    },
+    {
+      "key": "longDescription",
+      "value": ""
+    }
+  ]
+}
