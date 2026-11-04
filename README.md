@@ -134,7 +134,7 @@ Open `http://localhost:3000`.
 | backend | `CORS_ORIGIN` | `http://localhost:3000` | Frontend origin allowed to call the API. |
 | backend | `SEED` | `true` | Creates sample tasks on startup. |
 
-> If port 3000 is busy, Next.js starts on 3001. In that case set `CORS_ORIGIN=http://localhost:3001` in the backend (in `docker-compose.yml` or `backend/.env`), otherwise the browser blocks the requests.
+> If port 3000 is busy, Next.js starts on 3001 and the browser's requests are blocked by CORS. Start the backend with the matching origin: `CORS_ORIGIN=http://localhost:3001 docker compose up --build` (or set it in `backend/.env` when running without Docker).
 
 ---
 

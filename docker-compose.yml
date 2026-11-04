@@ -5,6 +5,8 @@ services:
       - "4000:4000"
     environment:
       PORT: 4000
-      CORS_ORIGIN: http://localhost:3000
+      # Override when the frontend runs on another port:
+      #   CORS_ORIGIN=http://localhost:3001 docker compose up
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
       SEED: "true"
     restart: unless-stopped
